@@ -12,6 +12,7 @@ B. Miller   Ver  Comment
 12/12/2019  0.10 Function copied from RefPlaneRegion 0.25
 07/08/2020  0.11 Updated fn to handle all possible "pieces" & contours (inc. holes) or just outline.
 08/02/2021  0.12 Separate unconnected region contours, set masks, example. invert idea.
+15/04/2021  0.13 Added Polygon function.
 
  ..............................................................................}
 
@@ -82,6 +83,56 @@ begin
         Region := GIterator.NextPCBObject;
     end;
     Poly.GroupIterator_Destroy(GIterator);
+    PCBServer.PostProcess;
+end;
+
+Function AddPolygonToBoard(GPC : IPCB_GeometricPolygon; const PolygonName : WideString; PNet : IPCB_Net; Layer : TLayer) : IPCB_Polygon;
+Var
+    I       : Integer;
+    GPCVL   : Pgpc_vertex_list;
+    PolySeg : TPolySegment;
+
+Begin
+    ReportLog.Add('NewPolygon: ''' + PolygonName + ''' on Layer ''' + cLayerStrings[Layer] + '''');
+    //Update so that Polygons always repour - avoids polygon repour yes/no dialog box popping up.
+    PCBServer.SystemOptions.PolygonRepour := eAlwaysRepour;
+    PCBServer.PreProcess;
+    Result := PCBServer.PCBObjectFactory(ePolyObject, eNoDimension, eCreate_Default);
+//    PCBServer.SendMessageToRobots(Result.I_ObjectAddress, c_Broadcast, PCBM_BeginModify, c_NoEventData);
+    Result.Name                := PolygonName;
+    Result.Layer               := Layer;
+    Result.PolyHatchStyle      := ePolySolid;
+    Result.RemoveIslandsByArea := False;
+    Result.RemoveNarrowNecks   := True;
+    Result.ArcApproximation    := MilsToCoord(0.5);
+    Result.RemoveDead          := False;
+    Result.PourOver            := ePolygonPourOver_SameNet;  //  ePolygonPourOver_SameNetPolygon;
+    Result.AvoidObsticles      := True;
+    Result.Net                 := PNet;
+
+//  DNW
+//    Result.Polygon := GPC.Replicate.Polygon;
+
+    GPCVL := GPC.Contour(0);                   // refed to absolute
+    Result.PointCount := GPCVL.Count;
+
+    PolySeg := TPolySegment;
+    for I := 0 to (GPCVL.Count) do       // loop to count
+    begin
+       PolySeg.Kind := ePolySegmentLine;
+       PolySeg.vx   := GPCVL.x(I);
+       PolySeg.vy   := GPCVL.y(I);
+       Result.Segments[I] := PolySeg;
+       ReportLog.Add(CoordUnitToString(GPCVL.x(I) - BOrigin.X ,eMils) + '  ' + CoordUnitToString(GPCVL.y(I) - BOrigin.Y, eMils) );
+    end;
+
+    Board.AddPCBObject(Result);
+    Result.SetState_CopperPourInvalid;
+    Result.Rebuild;
+    Result.CopperPourValidate;
+
+//    PCBServer.SendMessageToRobots(Result.I_ObjectAddress, c_Broadcast, PCBM_EndModify, c_NoEventData);
+//    PCBServer.SendMessageToRobots(Board.I_ObjectAddress, c_Broadcast, PCBM_BoardRegisteration, Result.I_ObjectAddress);
     PCBServer.PostProcess;
 end;
 
