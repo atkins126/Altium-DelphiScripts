@@ -27,6 +27,7 @@
  20/04/2021 v2.22 BLM  Allow for Mech Desig. to use MultiLine
  23/04/2021 v2.23 BLM  Get TTF to scale same as stroke. Uses Bounding Rect for Mech Desg. text.
  01/05/2021 v2.24 BLM  Tweak text fn order to fix text selection post adjustment.
+ 02/05/2021 v2.30 BLM  Comp.Name is not reliable in AD20+, use text box size methods. 
 
 Warning:
   Scripting API can NOT be used (easily) to determine the Top & Bottom side mech layer pairs.
@@ -82,6 +83,7 @@ function CalcBRScale(CBR, TBR : TCoordRect, const ReduceFactor : float) : float;
 function CalcTextBR(Text : IPCB_Text) : TCoordRect;                                                 forward;
 function ClipTextSize(Size : TCoord, MinHeight, MaxHeight : TCoord, TTFont : boolean) : TCoord;     forward;
 procedure ProcessFPDesignators(const dummy : integer);                                              forward;
+function GetDesignators(PComp : IPCB_Component) : TObjectList;                                      forward;
 
 procedure TFormAdjustDesignators.ButtonCancelClick(Sender: TObject);
 begin
@@ -250,9 +252,6 @@ Var
     Designator              : IPCB_Text;
     MechDesignator          : IPCB_Text;
 
-    OldAutoPosition         : TTextAutoposition;
-    OldAutoPosComment       : TTextAutoposition;
-
     PCBSystemOptions        : IPCB_SystemOptions;
     DRCSetting              : boolean;
 
@@ -261,7 +260,7 @@ Var
     TTFFactor               : float;
     i                       : integer;
     MaximumHeight           : TCoord;   // TCoord from mils in UI
-    MinimumHeight           : TCoord;   // 
+    MinimumHeight           : TCoord;   //
     UnHideDesignators       : Boolean;  // Unhides all designators
     LockStrings             : Boolean;  // Lock all strings
     BoundingLayers          : Boolean;  // Look for bounding rectangle in selected layers
@@ -412,11 +411,7 @@ begin
         dX := RectWidth(CBR);
 //   test if dX or dY too small !
 
-        Designator        := Component.Name;
-        OldAutoPosition   := Component.GetState_NameAutoPos;
-        OldAutoPosComment := Component.GetState_CommentAutoPos;
-//        OldMultiline      := Designator.Multiline;
-//        OldMultilineAuto  := Designator.MultilineTextAutoPosition;
+        Designator        := GetDesignators(Component).Items(0);
 
 //   Size limits depend on rotation & component primitives bounding rectangle
         if ((Length(Designator.GetDesignatorDisplayString) > 7) and (ShowOnce = False)) then
@@ -428,7 +423,7 @@ begin
 
         if (CheckBoxOverlay.Checked) then
         begin
-            Component.Comment.BeginModify;
+//            Component.Comment.BeginModify;
             Component.Name.BeginModify;
 
             // Setup the text properties
@@ -484,15 +479,12 @@ begin
             Designator.Width := Width;
             Component.Name.EndModify;
 
-//     specific sequence: Stop comment being moved with auto position of Name/designator.
             if MoveOverlayText then
             begin
-                Component.ChangeCommentAutoposition(eAutoPos_Manual);
-                Component.ChangeNameAutoposition   (eAutoPos_CenterCenter);
-                Component.SetState_CommentAutoPos  (OldAutoPosComment);
-                Component.SetState_NameAutoPos     (OldAutoPosition);
-            end;
-            Component.Comment.EndModify;
+                MDLocation := CalculatePosition(CBR, Designator, BoardSide);
+                Designator.MoveToXY(MDLocation.X, MDLocation.Y);
+             end;
+//            Component.Comment.EndModify;
         end;
 
         if (CheckBoxMech.Checked) then
@@ -507,6 +499,7 @@ begin
             MechDesignator := GroupIterator.FirstPCBObject;
             while (MechDesignator <> Nil) Do
             begin
+                if not MechDesignator.IsDesignator then
                 if ASetOfLayers.Contains(MechDesignator.Layer) then
                 if ( (LowerCase(MechDesignator.GetState_UnderlyingString) = '.designator') or (MechDesignator.GetState_ConvertedString = Designator.GetState_ConvertedString) ) then
                 begin
@@ -578,8 +571,7 @@ begin
                     if MoveOverlayText then
                     begin
                         MDLocation := CalculatePosition(CBR, MechDesignator, BoardSide);
-                        MechDesignator.XLocation  := MDLocation.X;
-                        MechDesignator.YLocation  := MDLocation.Y;
+                        MechDesignator.MoveToXY(MDLocation.X, MDLocation.Y);
                     end;
                     MechDesignator.SetState_XSizeYSize;
                     MechDesignator.GraphicallyInvalidate;
@@ -711,6 +703,21 @@ begin
 end;
 
 {.......................................................................................}
+function GetDesignators(PComp : IPCB_Component) : TObjectList;
+//Comp.Name is not reliable in AD20+ ?? Is there now more than ONE?
+var
+    I     : integer;
+    PText : IPCB_Text;
+begin
+    Result := TObjectList.Create;
+    for I := 1 to PComp.GetPrimitiveCount(MkSet(eTextObject)) do
+    begin
+        PText := PComp.GetPrimitiveAt(I, eTextObject);
+        if PText.IsDesignator then
+            Result.Add(PText);        
+    end;
+end;
+
 function ClipTextSize(Size : TCoord, MinHeight, MaxHeight : TCoord, TTFont : boolean) : TCoord;
 var
     Min, Max : TCoord;
