@@ -12,6 +12,7 @@
  BL Miller
 17/04/2020  v1.10  added pin x, y & len
 04/03/2021  v1.20  added all parts & modes & support SchDoc
+16/04/2021  v1.21  improved multi-part designator
 ..............................................................................}
 
 const
@@ -68,6 +69,7 @@ Var
     Pin             : ISch_Pin;
     ReportInfo      : TStringList;
     CompName        : TString;
+    CompDesg        : WideString;
     PinCount        : Integer;
 
     PartCount       : Integer;    // sub parts (multi-gate) of 1 component
@@ -107,8 +109,12 @@ Begin
     LibComp := LibIterator.FirstSchObject;
     While LibComp <> Nil Do
     Begin
-        CompName : = LibComp.LibReference;
-        ReportInfo.Add('Comp Name: ' + CompName + '   | Des : ' + LibComp.Designator.Text);
+        CompName := LibComp.LibReference;
+        CompDesg := LibComp.Designator.Text;
+//        if CurrentLib.ObjectID = eSheet then
+//            CompDesg := LibComp.FullPartDesignator(LibComp.CurrentPartID);
+
+        ReportInfo.Add('Comp Name: ' + CompName + '   | Des : ' + CompDesg);
         PartCount := LibComp.PartCount;
 
         LibComp.GetState_PartCountNoPart0;
@@ -118,6 +124,7 @@ Begin
         DMCount   := LibComp.DisplayModeCount;
         ReportInfo.Add('Number parts : ' + IntToStr(PartCount) + ' |  CurrentPartID : ' + IntToStr(ThisPID) + ' |  modes cruft : ' + IntToStr(DMCount)  + ' |  Current Mode : ' + IntToStr(ThisDMode));
 
+        LibComp.IsMultiPartComponent;
 
         Iterator := LibComp.SchIterator_Create;
         Iterator.AddFilter_ObjectSet(MkSet(ePin));
@@ -125,7 +132,7 @@ Begin
 // Part0 is some global power pin graphic nonsense
         for i := 1 to (PartCount) do
         begin
-            ReportInfo.Add('PartID : ' + IntToStr(i) );
+            ReportInfo.Add('PartID : ' + IntToStr(i) + '  ' + LibComp.FullPartDesignator(i) );
             ReportInfo.Add('Pin Name  Mode     X        Y         length ');
 
             PinCount := 0;
